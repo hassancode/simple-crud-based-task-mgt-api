@@ -666,4 +666,162 @@ You now have a fully functional REST API:
 
 ## Step 8: Add Tests with pytest
 
-*Coming next...*
+Testing ensures your API works correctly and catches bugs early.
+
+### Test Structure
+
+```
+tests/
+├── __init__.py         # Makes tests a Python package
+├── conftest.py         # Shared fixtures (test setup)
+└── test_tasks.py       # Actual tests
+```
+
+### conftest.py - Test Fixtures
+
+Fixtures are reusable test setup code. pytest automatically discovers `conftest.py`.
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel.pool import StaticPool
+
+from main import app, get_session
+
+
+@pytest.fixture(name="session")
+def session_fixture():
+    """Create fresh in-memory database for each test."""
+    engine = create_engine(
+        "sqlite://",  # In-memory database
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as session:
+        yield session
+
+
+@pytest.fixture(name="client")
+def client_fixture(session: Session):
+    """Create test client with overridden database."""
+    def get_session_override():
+        return session
+
+    app.dependency_overrides[get_session] = get_session_override
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
+```
+
+### Key Testing Concepts
+
+**1. In-Memory Database (`sqlite://`)**
+- No file created - lives only in RAM
+- Fast and isolated
+- Fresh database for each test
+
+**2. Dependency Override**
+```python
+app.dependency_overrides[get_session] = get_session_override
+```
+This tells FastAPI: "When any endpoint asks for `get_session`, give them our test session instead."
+
+**3. TestClient**
+```python
+from fastapi.testclient import TestClient
+client = TestClient(app)
+response = client.get("/tasks")
+```
+Simulates HTTP requests without running a real server.
+
+### Writing Tests
+
+```python
+def test_create_task_success(client: TestClient):
+    """Test creating a task with valid data."""
+    response = client.post(
+        "/tasks",
+        json={"title": "Buy groceries"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Buy groceries"
+    assert "id" in data
+```
+
+### Test Categories
+
+| Category | What to Test |
+|----------|-------------|
+| **Success cases** | Valid inputs return expected results |
+| **Error cases** | Invalid inputs return proper errors |
+| **Edge cases** | Empty lists, missing optional fields |
+| **Not found** | Non-existent resources return 404 |
+
+### Running Tests
+
+```bash
+# Run all tests
+uv run python -m pytest
+
+# Run with verbose output
+uv run python -m pytest -v
+
+# Run specific test file
+uv run python -m pytest tests/test_tasks.py
+
+# Run specific test
+uv run python -m pytest tests/test_tasks.py::test_create_task_success
+```
+
+### Our Test Results
+
+```
+tests/test_tasks.py::test_create_task_success PASSED
+tests/test_tasks.py::test_create_task_minimal PASSED
+tests/test_tasks.py::test_create_task_missing_title PASSED
+tests/test_tasks.py::test_create_task_empty_title PASSED
+tests/test_tasks.py::test_get_tasks_empty PASSED
+tests/test_tasks.py::test_get_tasks_with_data PASSED
+tests/test_tasks.py::test_get_task_success PASSED
+tests/test_tasks.py::test_get_task_not_found PASSED
+tests/test_tasks.py::test_update_task_success PASSED
+tests/test_tasks.py::test_update_task_partial PASSED
+tests/test_tasks.py::test_update_task_not_found PASSED
+tests/test_tasks.py::test_delete_task_success PASSED
+tests/test_tasks.py::test_delete_task_not_found PASSED
+tests/test_tasks.py::test_health_check PASSED
+
+============================== 14 passed ==============================
+```
+
+---
+
+## Congratulations!
+
+You've built a complete CRUD API with:
+
+- **FastAPI** - Modern Python web framework
+- **SQLModel** - Database ORM with validation
+- **SQLite** - Lightweight database
+- **pytest** - Comprehensive test suite
+
+### What You Learned
+
+1. **FastAPI basics** - Routes, decorators, dependency injection
+2. **SQLModel** - Models, Field validation, database operations
+3. **Database sessions** - Connection management, lifespan events
+4. **CRUD operations** - Create, Read, Update, Delete patterns
+5. **Error handling** - HTTPException, status codes
+6. **Testing** - Fixtures, TestClient, dependency overrides
+
+### Next Steps
+
+- Add authentication (OAuth2, JWT)
+- Add pagination for GET /tasks
+- Deploy to cloud (Railway, Render, Fly.io)
+- Add more fields (due_date, priority, tags)
+- Use PostgreSQL for production
