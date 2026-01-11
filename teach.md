@@ -204,14 +204,37 @@ def get_session() -> Generator[Session, None, None]:
 SessionDep = Depends(get_session)
 ```
 
-### Startup Event
+### Lifespan Context Manager (Modern Pattern)
+
+The old `@app.on_event("startup")` decorator is **deprecated**. Use the lifespan context manager instead:
 
 ```python
-@app.on_event("startup")
-def on_startup():
-    """Runs when the app starts - creates tables if they don't exist."""
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup/shutdown.
+
+    - Code BEFORE yield = startup (runs before accepting requests)
+    - Code AFTER yield = shutdown (cleanup)
+    """
+    # STARTUP
     create_db_and_tables()
+    yield
+    # SHUTDOWN (cleanup here if needed)
+
+app = FastAPI(
+    title="My API",
+    lifespan=lifespan  # Pass the lifespan function
+)
 ```
+
+**Why lifespan is better:**
+- Single place for both startup AND shutdown logic
+- Cleaner resource management (like context managers)
+- Follows modern Python async patterns
+- The deprecated `on_event` will be removed in future FastAPI versions
 
 ### Understanding Dependency Injection
 
@@ -249,7 +272,111 @@ To switch to PostgreSQL later, just change `DATABASE_URL` and remove `connect_ar
 
 ## Step 4: Create POST Endpoint (Create Task)
 
-*Coming next...*
+### What is CRUD?
+
+CRUD represents the four basic operations for persistent storage:
+
+| Operation | HTTP Method | SQL Equivalent | Description |
+|-----------|-------------|----------------|-------------|
+| **C**reate | POST | INSERT | Add new data |
+| **R**ead | GET | SELECT | Retrieve data |
+| **U**pdate | PUT/PATCH | UPDATE | Modify data |
+| **D**elete | DELETE | DELETE | Remove data |
+
+### Common HTTP Status Codes
+
+| Code | Name | When to Use |
+|------|------|-------------|
+| 200 | OK | Success (default) |
+| 201 | Created | Successfully created a new resource |
+| 404 | Not Found | Resource doesn't exist |
+| 422 | Unprocessable Entity | Validation error |
+
+### The Code
+
+```python
+@app.post("/tasks", response_model=Task, status_code=201)
+def create_task(task: TaskCreate, session: Session = SessionDep):
+    """Create a new task."""
+    # Convert input schema to database model
+    db_task = Task(**task.model_dump())
+
+    # Add to session (staged for insert)
+    session.add(db_task)
+
+    # Commit (save to database)
+    session.commit()
+
+    # Refresh to get auto-generated id
+    session.refresh(db_task)
+
+    return db_task
+```
+
+### Understanding the Decorator
+
+```python
+@app.post("/tasks", response_model=Task, status_code=201)
+```
+
+- `@app.post("/tasks")` - Handle POST requests to `/tasks`
+- `response_model=Task` - Serialize the response using the Task model
+- `status_code=201` - Return 201 Created instead of default 200 OK
+
+### Understanding the Function Parameters
+
+```python
+def create_task(task: TaskCreate, session: Session = SessionDep):
+```
+
+- `task: TaskCreate` - FastAPI automatically:
+  1. Reads the JSON request body
+  2. Validates it against TaskCreate schema
+  3. Returns 422 error if validation fails
+  4. Passes the validated object to your function
+
+- `session: Session = SessionDep` - Dependency injection provides the database session
+
+### The Database Operations Flow
+
+```
+Client Request          FastAPI                    Database
+     |                    |                           |
+     |--- POST /tasks --->|                           |
+     |    {title: "..."}  |                           |
+     |                    |-- validate (TaskCreate) --|
+     |                    |                           |
+     |                    |-- Task(**data) ---------->|
+     |                    |-- session.add() --------->|
+     |                    |-- session.commit() ------>| INSERT INTO tasks...
+     |                    |<- session.refresh() ------|
+     |                    |   (gets new id)           |
+     |<-- 201 + Task -----|                           |
+```
+
+### Key Methods Explained
+
+| Method | What it Does |
+|--------|--------------|
+| `task.model_dump()` | Converts Pydantic model to dictionary |
+| `Task(**dict)` | Creates Task instance from dict (unpacking) |
+| `session.add(obj)` | Stages object for insertion (not saved yet) |
+| `session.commit()` | Saves all staged changes to database |
+| `session.refresh(obj)` | Reloads object from DB (gets generated values) |
+
+### Testing with curl
+
+```bash
+# Create a task
+curl -X POST http://localhost:8000/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Buy groceries", "description": "Milk, eggs, bread"}'
+
+# Response:
+# {"title": "Buy groceries", "description": "Milk, eggs, bread", "completed": false, "id": 1}
+```
+
+Or use the interactive docs at `http://localhost:8000/docs`!
 
 ---
 

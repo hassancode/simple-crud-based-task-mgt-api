@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
 from sqlmodel import Session, SQLModel, Field, create_engine
@@ -108,24 +109,35 @@ SessionDep = Depends(get_session)
 # APP CONFIGURATION
 # =============================================================================
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager - the modern way to handle startup/shutdown.
+
+    This replaces the deprecated @app.on_event("startup") decorator.
+
+    How it works:
+    - Code BEFORE 'yield' runs on startup (before accepting requests)
+    - Code AFTER 'yield' runs on shutdown (cleanup)
+
+    In production, you'd typically use migrations (like Alembic) instead
+    of create_db_and_tables().
+    """
+    # STARTUP
+    create_db_and_tables()
+    yield
+    # SHUTDOWN (cleanup would go here if needed)
+
+
 # Create the FastAPI application instance
 # This is the main entry point for our API
 app = FastAPI(
     title="Task Management API",
     description="A simple CRUD API for managing tasks",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan  # Pass the lifespan context manager
 )
-
-
-@app.on_event("startup")
-def on_startup():
-    """
-    Runs when the FastAPI application starts.
-
-    Creates all database tables if they don't exist.
-    In production, you'd typically use migrations (like Alembic) instead.
-    """
-    create_db_and_tables()
 
 
 # =============================================================================
@@ -138,3 +150,45 @@ def on_startup():
 def health_check():
     """Returns a simple message to confirm the API is running."""
     return {"status": "healthy", "message": "Task Management API is running"}
+
+
+# -----------------------------------------------------------------------------
+# CREATE - POST /tasks
+# -----------------------------------------------------------------------------
+@app.post("/tasks", response_model=Task, status_code=201)
+def create_task(task: TaskCreate, session: Session = SessionDep):
+    """
+    Create a new task.
+
+    How it works:
+    1. FastAPI automatically parses the JSON request body into a TaskCreate object
+    2. TaskCreate validates the data (title required, lengths checked, etc.)
+    3. We convert TaskCreate → Task (the database model)
+    4. session.add() stages the task for insertion
+    5. session.commit() saves it to the database
+    6. session.refresh() reloads the task to get the auto-generated id
+    7. Return the task with its new id
+
+    Parameters:
+    - task: The task data from the request body (validated by TaskCreate)
+    - session: Database session (injected by FastAPI via Depends)
+
+    Returns:
+    - The created task with its auto-generated id
+    - HTTP 201 Created status code
+    """
+    # Convert the input schema to a database model
+    # model_dump() converts the Pydantic model to a dict
+    # **dict unpacks it as keyword arguments to Task()
+    db_task = Task(**task.model_dump())
+
+    # Add to session (staged for insert, not yet saved)
+    session.add(db_task)
+
+    # Commit the transaction (actually saves to database)
+    session.commit()
+
+    # Refresh to get the auto-generated id from the database
+    session.refresh(db_task)
+
+    return db_task

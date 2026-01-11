@@ -1,0 +1,17 @@
+[project]
+name = "simple-crud-based-task-mgt-api"
+version = "0.1.0"
+description = "CRUD based simple task management api"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.128.0",
+    "sqlmodel>=0.0.31",
+    "uvicorn>=0.40.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.2",
+]
