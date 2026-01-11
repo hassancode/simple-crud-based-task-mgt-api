@@ -252,3 +252,55 @@ def get_task(task_id: int, session: Session = SessionDep):
         )
 
     return task
+
+
+# -----------------------------------------------------------------------------
+# UPDATE - PUT /tasks/{task_id}
+# -----------------------------------------------------------------------------
+@app.put("/tasks/{task_id}", response_model=Task)
+def update_task(task_id: int, task_update: TaskUpdate, session: Session = SessionDep):
+    """
+    Update an existing task (partial update supported).
+
+    How it works:
+    1. Fetch the existing task from database
+    2. If not found, return 404
+    3. Get only the fields that were provided in the request (exclude_unset=True)
+    4. Update only those fields on the existing task
+    5. Save and return the updated task
+
+    Why exclude_unset=True?
+    - If user sends {"completed": true}, we only update 'completed'
+    - Without it, title and description would be set to None
+
+    Parameters:
+    - task_id: The task ID from the URL path
+    - task_update: The update data (all fields optional)
+
+    Returns:
+    - The updated task
+    - HTTP 404 if task doesn't exist
+    """
+    # Fetch existing task
+    db_task = session.get(Task, task_id)
+
+    if not db_task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task with id {task_id} not found"
+        )
+
+    # Get only the fields that were explicitly set in the request
+    # exclude_unset=True ignores fields that weren't provided
+    update_data = task_update.model_dump(exclude_unset=True)
+
+    # Update each provided field on the database object
+    # sqlmodel_update is a convenient method to update multiple fields
+    db_task.sqlmodel_update(update_data)
+
+    # Save changes
+    session.add(db_task)
+    session.commit()
+    session.refresh(db_task)
+
+    return db_task

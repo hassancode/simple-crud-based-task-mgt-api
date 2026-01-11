@@ -484,7 +484,110 @@ curl http://localhost:8000/tasks/999
 
 ## Step 6: Create PUT Endpoint (Update Task)
 
-*Coming next...*
+### PUT vs PATCH
+
+| Method | Behavior | Use Case |
+|--------|----------|----------|
+| PUT | Replace entire resource | Send all fields, missing = null |
+| PATCH | Partial update | Send only changed fields |
+
+We implement PATCH-style behavior (more practical) using the PUT method.
+
+### The Code
+
+```python
+@app.put("/tasks/{task_id}", response_model=Task)
+def update_task(task_id: int, task_update: TaskUpdate, session: Session = SessionDep):
+    """Update an existing task (partial update)."""
+    # Fetch existing task
+    db_task = session.get(Task, task_id)
+
+    if not db_task:
+        raise HTTPException(status_code=404, detail=f"Task with id {task_id} not found")
+
+    # Get only fields that were explicitly provided
+    update_data = task_update.model_dump(exclude_unset=True)
+
+    # Update the task
+    db_task.sqlmodel_update(update_data)
+
+    session.add(db_task)
+    session.commit()
+    session.refresh(db_task)
+
+    return db_task
+```
+
+### The Magic of exclude_unset=True
+
+This is the key to partial updates:
+
+```python
+# Request body: {"completed": true}
+# (title and description NOT provided)
+
+# WITHOUT exclude_unset=True:
+task_update.model_dump()
+# → {"title": None, "description": None, "completed": True}
+# ❌ Would overwrite title and description with None!
+
+# WITH exclude_unset=True:
+task_update.model_dump(exclude_unset=True)
+# → {"completed": True}
+# ✅ Only updates what was provided
+```
+
+### sqlmodel_update()
+
+SQLModel provides a convenient method to update multiple fields at once:
+
+```python
+# Instead of:
+db_task.title = update_data.get("title", db_task.title)
+db_task.completed = update_data.get("completed", db_task.completed)
+# ...for each field
+
+# Use:
+db_task.sqlmodel_update(update_data)  # Updates all provided fields
+```
+
+### The Update Flow
+
+```
+Client                          Server                         Database
+  |                               |                               |
+  |-- PUT /tasks/1 -------------->|                               |
+  |   {"completed": true}         |                               |
+  |                               |-- session.get(Task, 1) ------>|
+  |                               |<-- Task(id=1, ...) -----------|
+  |                               |                               |
+  |                               |-- model_dump(exclude_unset) --|
+  |                               |   → {"completed": true}       |
+  |                               |                               |
+  |                               |-- sqlmodel_update() ----------|
+  |                               |-- session.commit() ---------->| UPDATE task SET...
+  |                               |                               |
+  |<-- 200 + Updated Task --------|                               |
+```
+
+### Testing with curl
+
+```bash
+# Mark task as completed
+curl -X PUT http://localhost:8000/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"completed": true}'
+
+# Update title only
+curl -X PUT http://localhost:8000/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Buy organic groceries"}'
+
+# Update multiple fields
+curl -X PUT http://localhost:8000/tasks/1 \
+  -H "Content-Type: application/json" \
+  -d '{"title": "New title", "description": "New desc", "completed": true}'
+```
 
 ---
 
