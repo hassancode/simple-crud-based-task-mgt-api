@@ -1,8 +1,8 @@
 from collections.abc import Generator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
-from sqlmodel import Session, SQLModel, Field, create_engine
+from fastapi import Depends, FastAPI, HTTPException
+from sqlmodel import Session, SQLModel, Field, create_engine, select
 
 # =============================================================================
 # MODELS
@@ -192,3 +192,63 @@ def create_task(task: TaskCreate, session: Session = SessionDep):
     session.refresh(db_task)
 
     return db_task
+
+
+# -----------------------------------------------------------------------------
+# READ - GET /tasks (list all)
+# -----------------------------------------------------------------------------
+@app.get("/tasks", response_model=list[Task])
+def get_tasks(session: Session = SessionDep):
+    """
+    Get all tasks.
+
+    How it works:
+    1. select(Task) creates a SELECT query for the Task table
+    2. session.exec() executes the query
+    3. .all() fetches all results as a list
+
+    The SQL equivalent: SELECT * FROM task
+
+    Returns:
+    - List of all tasks (empty list if none exist)
+    """
+    # Create a SELECT statement for all Tasks
+    statement = select(Task)
+
+    # Execute and get all results
+    tasks = session.exec(statement).all()
+
+    return tasks
+
+
+# -----------------------------------------------------------------------------
+# READ - GET /tasks/{task_id} (single task)
+# -----------------------------------------------------------------------------
+@app.get("/tasks/{task_id}", response_model=Task)
+def get_task(task_id: int, session: Session = SessionDep):
+    """
+    Get a single task by ID.
+
+    How it works:
+    1. task_id comes from the URL path (e.g., /tasks/5 → task_id=5)
+    2. session.get() is a shortcut to fetch by primary key
+    3. If not found, we raise HTTPException with 404 status
+
+    Parameters:
+    - task_id: The task ID from the URL path (automatically validated as int)
+
+    Returns:
+    - The task if found
+    - HTTP 404 Not Found if task doesn't exist
+    """
+    # session.get() fetches by primary key - cleaner than select().where()
+    task = session.get(Task, task_id)
+
+    # If no task found, return 404 error
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task with id {task_id} not found"
+        )
+
+    return task

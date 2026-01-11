@@ -382,7 +382,103 @@ Or use the interactive docs at `http://localhost:8000/docs`!
 
 ## Step 5: Create GET Endpoints (Read Tasks)
 
-*Coming next...*
+We create two GET endpoints for reading data:
+1. **GET /tasks** - List all tasks
+2. **GET /tasks/{task_id}** - Get a single task by ID
+
+### GET All Tasks
+
+```python
+@app.get("/tasks", response_model=list[Task])
+def get_tasks(session: Session = SessionDep):
+    """Get all tasks."""
+    statement = select(Task)
+    tasks = session.exec(statement).all()
+    return tasks
+```
+
+**Key points:**
+- `response_model=list[Task]` - Returns a JSON array of tasks
+- `select(Task)` - Creates a SELECT query (SQL: `SELECT * FROM task`)
+- `session.exec().all()` - Executes query and returns all results as a list
+
+### GET Single Task by ID
+
+```python
+@app.get("/tasks/{task_id}", response_model=Task)
+def get_task(task_id: int, session: Session = SessionDep):
+    """Get a single task by ID."""
+    task = session.get(Task, task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task with id {task_id} not found"
+        )
+
+    return task
+```
+
+### Path Parameters
+
+The `{task_id}` in the URL path becomes a function parameter:
+
+```
+URL: /tasks/5
+         ↓
+def get_task(task_id: int, ...):
+             ↑
+        task_id = 5
+```
+
+FastAPI automatically:
+- Extracts the value from the URL
+- Validates it matches the type hint (`int`)
+- Returns 422 error if validation fails (e.g., `/tasks/abc`)
+
+### HTTPException
+
+When something goes wrong, raise `HTTPException`:
+
+```python
+from fastapi import HTTPException
+
+raise HTTPException(
+    status_code=404,              # HTTP status code
+    detail="Task not found"       # Error message in response body
+)
+```
+
+**Response:**
+```json
+{
+    "detail": "Task not found"
+}
+```
+
+### Query Methods Comparison
+
+| Method | Use Case | SQL Equivalent |
+|--------|----------|----------------|
+| `session.get(Model, id)` | Get by primary key | `SELECT * FROM task WHERE id = ?` |
+| `session.exec(select(Model)).all()` | Get all records | `SELECT * FROM task` |
+| `session.exec(select(Model)).first()` | Get first match | `SELECT * FROM task LIMIT 1` |
+
+### Testing with curl
+
+```bash
+# Get all tasks
+curl http://localhost:8000/tasks
+# Response: [{"title": "Buy groceries", "description": "...", "completed": false, "id": 1}]
+
+# Get single task
+curl http://localhost:8000/tasks/1
+# Response: {"title": "Buy groceries", "description": "...", "completed": false, "id": 1}
+
+# Get non-existent task (404 error)
+curl http://localhost:8000/tasks/999
+# Response: {"detail": "Task with id 999 not found"}
+```
 
 ---
 
