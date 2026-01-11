@@ -593,7 +593,74 @@ curl -X PUT http://localhost:8000/tasks/1 \
 
 ## Step 7: Create DELETE Endpoint (Delete Task)
 
-*Coming next...*
+The simplest CRUD operation - fetch, verify, delete.
+
+### The Code
+
+```python
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int, session: Session = SessionDep):
+    """Delete a task by ID."""
+    task = session.get(Task, task_id)
+
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task with id {task_id} not found")
+
+    session.delete(task)
+    session.commit()
+
+    return None  # 204 No Content
+```
+
+### Why 204 No Content?
+
+| Status Code | Meaning | Response Body |
+|-------------|---------|---------------|
+| 200 OK | Success, here's the data | Has content |
+| 201 Created | Success, created resource | Has content (the created item) |
+| 204 No Content | Success, nothing to return | Empty |
+
+For DELETE:
+- The resource no longer exists
+- There's nothing meaningful to return
+- 204 is the HTTP standard for "success, but no body"
+
+### session.delete() vs session.add()
+
+| Method | SQL | Purpose |
+|--------|-----|---------|
+| `session.add(obj)` | INSERT/UPDATE | Add or update a record |
+| `session.delete(obj)` | DELETE | Remove a record |
+
+Both require `session.commit()` to persist changes.
+
+### Testing with curl
+
+```bash
+# Delete a task
+curl -X DELETE http://localhost:8000/tasks/1 -v
+# Response: HTTP 204 (empty body)
+
+# Try to delete again (already deleted)
+curl -X DELETE http://localhost:8000/tasks/1
+# Response: {"detail": "Task with id 1 not found"}
+
+# Verify it's gone
+curl http://localhost:8000/tasks/1
+# Response: {"detail": "Task with id 1 not found"}
+```
+
+### CRUD Complete!
+
+You now have a fully functional REST API:
+
+| Operation | Method | Endpoint | Status Code |
+|-----------|--------|----------|-------------|
+| Create | POST | /tasks | 201 Created |
+| Read All | GET | /tasks | 200 OK |
+| Read One | GET | /tasks/{id} | 200 OK |
+| Update | PUT | /tasks/{id} | 200 OK |
+| Delete | DELETE | /tasks/{id} | 204 No Content |
 
 ---
 

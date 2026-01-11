@@ -304,3 +304,46 @@ def update_task(task_id: int, task_update: TaskUpdate, session: Session = Sessio
     session.refresh(db_task)
 
     return db_task
+
+
+# -----------------------------------------------------------------------------
+# DELETE - DELETE /tasks/{task_id}
+# -----------------------------------------------------------------------------
+@app.delete("/tasks/{task_id}", status_code=204)
+def delete_task(task_id: int, session: Session = SessionDep):
+    """
+    Delete a task by ID.
+
+    How it works:
+    1. Fetch the task from database
+    2. If not found, return 404
+    3. Delete it from the database
+    4. Return empty response with 204 No Content
+
+    Why 204 No Content?
+    - The resource no longer exists, so there's nothing to return
+    - 204 is the standard HTTP status for successful DELETE
+    - The response body is empty
+
+    Parameters:
+    - task_id: The task ID from the URL path
+
+    Returns:
+    - Empty response with HTTP 204 No Content
+    - HTTP 404 if task doesn't exist
+    """
+    # Fetch the task
+    task = session.get(Task, task_id)
+
+    if not task:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Task with id {task_id} not found"
+        )
+
+    # Delete from database
+    session.delete(task)
+    session.commit()
+
+    # Return nothing (204 No Content)
+    return None
