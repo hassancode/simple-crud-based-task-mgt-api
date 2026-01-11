@@ -116,6 +116,27 @@ Before writing Python code, verify:
 - [ ] Context managers for resources (files, sessions, connections)
 - [ ] Async patterns where appropriate
 
+## Scoring Rubric
+
+| Score | Rating | Criteria |
+|-------|--------|----------|
+| 5/5 | Modern | All patterns current, no deprecated APIs |
+| 4/5 | Good | 1-2 minor deprecated patterns |
+| 3/5 | Adequate | Some deprecated patterns, core logic sound |
+| 2/5 | Outdated | Multiple deprecated patterns throughout |
+| 1/5 | Legacy | Predominantly old patterns, needs rewrite |
+
+## Remediation Guide
+
+| Deprecated Pattern | Fix | Search Regex |
+|--------------------|-----|--------------|
+| `@app.on_event` | Use `lifespan` context manager | `@app\.on_event` |
+| `Optional[X]` | Replace with `X \| None` | `Optional\[` |
+| `List[X]`, `Dict[K,V]` | Use `list[X]`, `dict[K,V]` | `List\[|Dict\[` |
+| `.dict()` | Use `.model_dump()` | `\.dict\(\)` |
+| `orm_mode = True` | Use `from_attributes = True` | `orm_mode` |
+| `class Config:` | Use `model_config = ConfigDict(...)` | `class Config:` |
+
 ## References
 
 For detailed patterns, see: `references/fastapi-patterns.md`

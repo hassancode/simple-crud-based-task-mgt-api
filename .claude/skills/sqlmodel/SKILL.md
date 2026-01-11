@@ -130,14 +130,16 @@ def delete_user(session: Session, user_id: int) -> bool:
 ## FastAPI Integration
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException
 from sqlmodel import Session
 
-app = FastAPI()
-
-@app.on_event("startup")
-def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     create_db_and_tables()
+    yield
+
+app = FastAPI(lifespan=lifespan)
 
 @app.post("/users/", response_model=UserRead)
 def create_user(user: UserCreate, session: Session = Depends(get_session)):
