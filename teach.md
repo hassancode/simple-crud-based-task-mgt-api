@@ -152,7 +152,98 @@ class TaskUpdate(SQLModel):
 
 ## Step 3: Set up SQLite Database Connection
 
-*Coming next...*
+### What is SQLite?
+
+SQLite is a lightweight, file-based database:
+- **Zero installation** - Built into Python
+- **File-based** - Stores everything in a single `.db` file
+- **Same ORM code** - SQLModel code works identically with PostgreSQL
+- **Perfect for development** - Easy to switch to PostgreSQL for production
+
+### Key Concepts
+
+1. **Engine** - The connection to the database (like opening a file handle)
+2. **Session** - A "conversation" with the database where you run queries
+3. **Dependency Injection** - FastAPI's pattern for providing resources to endpoints
+
+### The Code
+
+```python
+from collections.abc import Generator
+from fastapi import Depends
+from sqlmodel import Session, create_engine
+
+# SQLite connection string - creates a file called "tasks.db"
+# For PostgreSQL: "postgresql://user:password@localhost:5432/dbname"
+DATABASE_URL = "sqlite:///tasks.db"
+
+# Create the database engine
+# connect_args is needed for SQLite only (thread safety)
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+def create_db_and_tables():
+    """Create all tables based on SQLModel classes with table=True."""
+    SQLModel.metadata.create_all(engine)
+
+
+def get_session() -> Generator[Session, None, None]:
+    """
+    Dependency that provides a database session for each request.
+
+    Generator function (uses yield):
+    1. Creates a new Session when a request comes in
+    2. Yields it to the endpoint function
+    3. Automatically closes it after the request completes
+    """
+    with Session(engine) as session:
+        yield session
+
+
+# Type alias for cleaner endpoint signatures
+SessionDep = Depends(get_session)
+```
+
+### Startup Event
+
+```python
+@app.on_event("startup")
+def on_startup():
+    """Runs when the app starts - creates tables if they don't exist."""
+    create_db_and_tables()
+```
+
+### Understanding Dependency Injection
+
+FastAPI's `Depends()` is powerful. When you write:
+
+```python
+@app.get("/tasks")
+def get_tasks(session: Session = Depends(get_session)):
+    # session is automatically provided!
+```
+
+FastAPI will:
+1. Call `get_session()` before your function runs
+2. Pass the yielded `Session` to your function
+3. Continue the generator (cleanup) after your function returns
+
+This ensures:
+- Each request gets its own database session
+- Sessions are properly closed even if errors occur
+- You don't have to manually manage connections
+
+### SQLite vs PostgreSQL
+
+| Feature | SQLite | PostgreSQL |
+|---------|--------|------------|
+| Installation | None (built-in) | Requires server |
+| Storage | Single file | Client-server |
+| Concurrency | Limited | Excellent |
+| Use case | Development, small apps | Production |
+| Connection string | `sqlite:///file.db` | `postgresql://user:pass@host/db` |
+
+To switch to PostgreSQL later, just change `DATABASE_URL` and remove `connect_args`!
 
 ---
 

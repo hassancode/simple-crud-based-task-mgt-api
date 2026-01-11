@@ -1,5 +1,7 @@
-from fastapi import FastAPI
-from sqlmodel import SQLModel, Field
+from collections.abc import Generator
+
+from fastapi import Depends, FastAPI
+from sqlmodel import Session, SQLModel, Field, create_engine
 
 # =============================================================================
 # MODELS
@@ -55,6 +57,54 @@ class TaskUpdate(SQLModel):
 
 
 # =============================================================================
+# DATABASE CONFIGURATION
+# =============================================================================
+# SQLite stores the database in a local file called "tasks.db"
+# For PostgreSQL, you'd use: "postgresql://user:password@localhost:5432/dbname"
+# =============================================================================
+
+DATABASE_URL = "sqlite:///tasks.db"
+
+# Create the database engine
+# - The engine is the starting point for any SQLAlchemy/SQLModel application
+# - It manages the connection pool to the database
+# - connect_args={"check_same_thread": False} is needed for SQLite only
+#   (SQLite by default only allows one thread, but FastAPI is multi-threaded)
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+def create_db_and_tables():
+    """
+    Create all database tables based on SQLModel classes with table=True.
+
+    SQLModel.metadata.create_all() looks at all model classes and creates
+    the corresponding tables if they don't exist.
+    """
+    SQLModel.metadata.create_all(engine)
+
+
+def get_session() -> Generator[Session, None, None]:
+    """
+    Dependency that provides a database session for each request.
+
+    This is a generator function (uses yield instead of return):
+    1. Creates a new Session when a request comes in
+    2. Yields it to the endpoint function
+    3. Automatically closes it after the request completes
+
+    Using 'with' ensures the session is properly closed even if an error occurs.
+    """
+    with Session(engine) as session:
+        yield session
+
+
+# Type alias for cleaner endpoint signatures
+# Instead of: session: Session = Depends(get_session)
+# We can use: session: SessionDep
+SessionDep = Depends(get_session)
+
+
+# =============================================================================
 # APP CONFIGURATION
 # =============================================================================
 
@@ -66,6 +116,21 @@ app = FastAPI(
     version="1.0.0"
 )
 
+
+@app.on_event("startup")
+def on_startup():
+    """
+    Runs when the FastAPI application starts.
+
+    Creates all database tables if they don't exist.
+    In production, you'd typically use migrations (like Alembic) instead.
+    """
+    create_db_and_tables()
+
+
+# =============================================================================
+# ENDPOINTS
+# =============================================================================
 
 # A simple health check endpoint
 # The @app.get decorator tells FastAPI this function handles GET requests to "/"
