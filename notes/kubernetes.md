@@ -119,6 +119,45 @@ kubectl port-forward pod/task-api 8000:8000   # Access at localhost:8000
 ```
 Use for dev/debugging. Production → use Services + Ingress.
 
+### Debugging & Troubleshooting
+
+| Command | Shows | Use When |
+|---------|-------|----------|
+| `kubectl logs` | Container stdout/stderr | App crashes, errors, debugging output |
+| `kubectl describe` | Resource details + events | Pod stuck pending, image pull issues |
+| `kubectl get events` | Cluster-wide events | Overview of what's happening |
+
+```bash
+# Logs
+kubectl logs <pod>                    # View logs
+kubectl logs <pod> -f                 # Follow/stream logs (like tail -f)
+kubectl logs <pod> --previous         # Logs from crashed container
+kubectl logs <pod> -c <container>     # Specific container (multi-container pods)
+
+# Describe
+kubectl describe pod <pod>            # Full pod details + events
+kubectl describe node <node>          # Node capacity, conditions, pods running
+kubectl describe svc <service>        # Service endpoints, ports
+
+# Events
+kubectl get events                    # All events in namespace
+kubectl get events --sort-by='.lastTimestamp'   # Sorted by time
+kubectl get events -A                 # All namespaces
+```
+
+**Troubleshooting flow:**
+```
+Pod not running?
+  │
+  ├─→ kubectl describe pod <name>    # Check events section at bottom
+  │     └─→ ImagePullBackOff? → Wrong image name/tag
+  │     └─→ Pending? → No node with enough resources
+  │     └─→ CrashLoopBackOff? → Check logs ↓
+  │
+  └─→ kubectl logs <pod>             # App-level errors
+        └─→ Add --previous if container restarted
+```
+
 ---
 
 ## Tips
