@@ -90,6 +90,96 @@ kubectl config current-context          # Which cluster am I talking to?
 
 **Context** = cluster + user + namespace combo. Useful when managing multiple clusters.
 
+---
+
+## Context Management
+
+Manage multiple clusters/environments from one machine.
+
+### What is a Context?
+
+```
+Context = Cluster + User + Namespace
+            │        │         │
+            │        │         └── default namespace for commands
+            │        └── credentials to authenticate
+            └── which K8s cluster to talk to
+```
+
+**Kubeconfig file:** `~/.kube/config` stores all contexts.
+
+### Commands
+
+```bash
+# View current context
+kubectl config current-context
+
+# List all contexts
+kubectl config get-contexts
+
+# Switch context
+kubectl config use-context <context-name>
+
+# Set default namespace for current context
+kubectl config set-context --current --namespace=<namespace>
+
+# View full kubeconfig
+kubectl config view              # Shows clusters, users, contexts (secrets redacted)
+```
+
+### Example: Multiple Clusters
+
+```
+~/.kube/config
+├── contexts:
+│   ├── dev-cluster    → dev K8s + dev-user
+│   ├── staging        → staging K8s + admin
+│   └── production     → prod K8s + readonly-user
+```
+
+```bash
+kubectl config use-context dev-cluster      # Switch to dev
+kubectl get pods                            # Runs against dev
+
+kubectl config use-context production       # Switch to prod
+kubectl get pods                            # Runs against prod
+```
+
+⚠️ Always verify context before running commands in production!
+
+### Creating a User Context (ServiceAccount)
+
+```bash
+# 1. Create namespace
+kubectl create ns dev-team
+
+# 2. Create service account
+kubectl -n dev-team create sa devuser
+
+# 3. Get token for the service account
+kubectl -n dev-team create token devuser
+```
+
+**Note:** `create token` generates a short-lived JWT token (K8s 1.24+). Use this to authenticate as the ServiceAccount.
+
+```bash
+# 4. Create rolebinding (and save to file)
+kubectl create rolebinding devuser-rb --role=devuser-role --serviceaccount=dev-team:devuser -n dev-team -o yaml > devuser-rb.yaml
+#                                        │                        │
+#                                   role to bind          namespace:sa-name format
+
+# 5. Add credentials to kubeconfig
+kubectl config set-credentials devuser --token=<paste-token-here>
+
+# 6. Create context linking cluster + user + namespace
+kubectl config set-context devuser-context --cluster=docker-desktop --user=devuser --namespace=dev-team
+#                               │                  │                    │               │
+#                          context name      your cluster          credentials     default ns
+
+# 7. Switch to new context
+kubectl config use-context devuser-context
+```
+
 ### Namespace & Pod Workflow
 ```bash
 kubectl create namespace nginx           # Create namespace
@@ -443,6 +533,59 @@ Narrow permissions (small blast radius):
 - Limit to specific namespaces
 
 ⚠️ Principle of least privilege — grant only what's needed.
+
+---
+
+## Jobs
+
+A **Job** runs a pod that completes a task and then stops (unlike Deployments that run forever).
+
+**Use cases:** Batch processing, backups, migrations, one-time scripts.
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: my-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: worker
+        image: busybox
+        command: ["echo", "Hello from job!"]
+      restartPolicy: Never    # Required for Jobs
+```
+
+### What is busybox?
+
+**busybox** = tiny Linux image (~1MB) with common utilities (echo, sh, wget, etc.)
+
+| Image | Size | Use |
+|-------|------|-----|
+| `busybox` | ~1MB | Quick tests, simple commands |
+| `alpine` | ~5MB | Lightweight Linux with package manager |
+| `nginx` | ~140MB | Web server |
+
+Perfect for Job examples because it's small and has basic shell commands.
+
+```bash
+# Create a job
+kubectl create job my-job --image=busybox -- echo "Hello"
+
+# Create job with environment variable
+kubectl create job my-job --image=busybox --env="MY_VAR=hello" -- sh -c 'echo $MY_VAR'
+
+# View jobs
+kubectl get jobs
+kubectl get pods              # Job creates a pod
+
+# See job output
+kubectl logs <pod-name>
+
+# Delete job (also deletes its pod)
+kubectl delete job my-job
+```
 
 ---
 
