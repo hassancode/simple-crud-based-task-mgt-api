@@ -536,6 +536,95 @@ Narrow permissions (small blast radius):
 
 ---
 
+## Deployments
+
+A **Deployment** manages identical pods with scaling, updates, and self-healing.
+
+```bash
+# Create deployment
+kubectl create deployment todo-app --image=todo:1.0 --port=8000
+
+# Scale
+kubectl scale deployment todo-app --replicas=3
+
+# Update image
+kubectl set image deployment/todo-app todo=todo:2.0
+
+# Rollback
+kubectl rollout undo deployment/todo-app
+```
+
+---
+
+## Services
+
+**Problem:** Pods get random IPs that change when pods restart/scale.
+
+**Solution:** Service provides a stable IP/DNS name.
+
+### Why Services? (Class Example)
+
+```
+progress-app scaled to 3 replicas:
+  Pod 1: 10.1.0.15
+  Pod 2: 10.1.0.23    ← IPs change on restart!
+  Pod 3: 10.1.0.31
+
+todo-app wants to call progress-app...
+  Which IP? What if pod dies and gets new IP?
+```
+
+**Service solves this:**
+```
+┌─────────────────────────────────────────────────────┐
+│                progress-svc (ClusterIP)             │
+│                   10.96.50.100                      │ ← Stable!
+│              or "progress-svc:80"                   │
+└───────────────────────┬─────────────────────────────┘
+                        │ load balances
+           ┌────────────┼────────────┐
+           ▼            ▼            ▼
+        [Pod 1]      [Pod 2]      [Pod 3]
+        10.1.0.15    10.1.0.23    10.1.0.31
+```
+
+todo-app just calls `http://progress-svc:80` — always works!
+
+### Service Types
+
+| Type | Access | Use case |
+|------|--------|----------|
+| `ClusterIP` | Internal only | App-to-app (progress-app) |
+| `NodePort` | External via node:port | External access (todo-app) |
+| `LoadBalancer` | Cloud load balancer | Production |
+
+### Class Example: todo-app + progress-app
+
+```
+┌──────────────┐  calls   ┌───────────────┐
+│   todo-app   │─────────►│  progress-app │
+│  (NodePort)  │          │  (ClusterIP)  │
+└──────────────┘          └───────────────┘
+       │                          │
+  External users            Internal only
+  access this              todo-app calls this
+```
+
+- **todo-app**: NodePort — users access from browser
+- **progress-app**: ClusterIP — only todo-app needs to reach it
+
+```bash
+# Expose todo-app externally
+kubectl expose deployment todo-app --type=NodePort --port=80 --target-port=8000
+
+# Expose progress-app internally only
+kubectl expose deployment progress-app --type=ClusterIP --port=80 --target-port=8000
+```
+
+todo-app code calls: `http://progress-svc:80/update` (not hardcoded pod IPs!)
+
+---
+
 ## Jobs
 
 A **Job** runs a pod that completes a task and then stops (unlike Deployments that run forever).
